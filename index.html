@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apex Aerodynamics — Wind Tunnel Simulation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+  :root {
+    --navy:  #080d1a; --navy2: #0d1628; --navy3: #111e35;
+    --steel: #1e3a5f; --accent:#4a8fc4; --light: #a8c4e0;
+    --white: #e8eef5; --gold:  #c4963a; --sep:rgba(74,143,196,0.2);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--navy);color:var(--white);font-family:'DM Sans',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+  header{display:flex;align-items:center;justify-content:space-between;padding:13px 26px;border-bottom:1px solid var(--sep);background:var(--navy2);flex-shrink:0;}
+  header h1{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);}
+  header span{font-size:11px;color:var(--light);opacity:.5;letter-spacing:.07em;}
+  .layout{display:flex;flex:1;overflow:hidden;}
+  #cc{flex:1;position:relative;}
+  canvas{display:block;}
+  .panel{width:268px;background:var(--navy2);border-left:1px solid var(--sep);overflow-y:auto;padding:18px 14px;flex-shrink:0;display:flex;flex-direction:column;gap:18px;}
+  .panel::-webkit-scrollbar{width:3px;} .panel::-webkit-scrollbar-thumb{background:var(--steel);border-radius:2px;}
+  .stitle{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);opacity:.65;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid var(--sep);}
+  .mode-group{display:flex;flex-direction:column;gap:5px;}
+  .mode-btn{background:var(--navy3);border:1px solid var(--sep);color:var(--light);font-size:12px;padding:8px 11px;cursor:pointer;border-radius:3px;text-align:left;transition:all .2s;font-family:'DM Sans',sans-serif;}
+  .mode-btn:hover{border-color:var(--accent);color:var(--white);}
+  .mode-btn.active{background:var(--steel);border-color:var(--accent);color:var(--white);}
+  .sl-group{display:flex;flex-direction:column;gap:13px;}
+  .sl-item label{display:flex;justify-content:space-between;font-size:12px;color:var(--light);margin-bottom:4px;}
+  .sl-item label span{font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);}
+  .sl-item input[type=range]{width:100%;height:3px;-webkit-appearance:none;background:var(--steel);border-radius:2px;outline:none;}
+  .sl-item input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;background:var(--accent);border-radius:50%;cursor:pointer;}
+  .sl-item input[type=range]:disabled{opacity:.28;}
+  .sl-hint{font-size:10px;color:var(--light);opacity:.38;margin-top:3px;line-height:1.4;}
+  .rg{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .rc{background:var(--navy3);border:1px solid var(--sep);border-radius:3px;padding:8px 9px;}
+  .rc .rl{font-size:9px;color:var(--light);opacity:.45;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px;}
+  .rc .rv{font-family:'Space Mono',monospace;font-size:12px;color:var(--accent);font-weight:700;}
+  .rc .ru{font-size:8px;color:var(--light);opacity:.35;margin-top:1px;}
+  .cf-chart{background:var(--navy3);border:1px solid var(--sep);border-radius:3px;padding:10px;}
+  .cf-chart .cf-title{font-family:'Space Mono',monospace;font-size:9px;color:var(--accent);opacity:.6;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;}
+  .legend-bar{height:9px;border-radius:2px;background:linear-gradient(to right,#1a3a6e,#2a7aaa,#3aaa80,#c4963a,#b03030);margin-bottom:4px;}
+  .legend-lbl{display:flex;justify-content:space-between;font-size:9px;color:var(--light);opacity:.4;font-family:'Space Mono',monospace;}
+  .info{background:var(--navy3);border:1px solid var(--sep);border-radius:3px;padding:9px 11px;font-size:11px;color:var(--light);line-height:1.55;opacity:.75;}
+  #loading-screen{position:absolute;inset:0;background:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:14px;}
+  #loading-screen h2{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.2em;color:var(--accent);text-transform:uppercase;}
+  .loader{width:180px;height:2px;background:var(--steel);border-radius:1px;overflow:hidden;}
+  .loader-fill{height:100%;background:var(--accent);animation:ld 1.1s ease forwards;}
+  @keyframes ld{from{width:0}to{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Apex Aerodynamics — Wind Tunnel Simulation</h1>
+  <span>NACA 2412 Upper Surface · SharkSkin Riblets + Piezoelectric BLC</span>
+</header>
+<div class="layout">
+  <div id="cc">
+    <div id="loading-screen">
+      <h2>Initializing Wind Tunnel</h2>
+      <div class="loader"><div class="loader-fill"></div></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div>
+      <div class="stitle">Surface Mode</div>
+      <div class="mode-group">
+        <button class="mode-btn active" id="btn-combo"   onclick="setMode('combo')">Riblets + Piezo (Apex-H)</button>
+        <button class="mode-btn"        id="btn-riblets" onclick="setMode('riblets')">Riblets Only</button>
+        <button class="mode-btn"        id="btn-smooth"  onclick="setMode('smooth')">Smooth Baseline</button>
+      </div>
+    </div>
+    <div>
+      <div class="stitle">Parameters</div>
+      <div class="sl-group">
+        <div class="sl-item">
+          <label>Mach Number <span id="val-mach">0.72</span></label>
+          <input type="range" id="sl-mach" min="0.1" max="1.8" step="0.05" value="0.72" oninput="updateParam('mach',this.value)">
+        </div>
+        <div class="sl-item">
+          <label>Riblet Spacing s⁺ <span id="val-sp">15</span></label>
+          <input type="range" id="sl-sp" min="5" max="30" step="1" value="15" oninput="updateParam('sp',this.value)">
+          <div class="sl-hint">Optimal drag reduction at s⁺ ≈ 15 (DLR-calibrated)</div>
+        </div>
+        <div class="sl-item">
+          <label>Piezo Gain <span id="val-piezo">0.70</span></label>
+          <input type="range" id="sl-piezo" min="0" max="1" step="0.05" value="0.7" oninput="updateParam('piezo',this.value)">
+          <div class="sl-hint">Active vibration damping in boundary layer — higher = more turbulence suppression.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="stitle">Live Readouts</div>
+      <div class="rg">
+        <div class="rc"><div class="rl">Drag Reduction</div><div class="rv" id="rd-drag">—</div></div>
+        <div class="rc"><div class="rl">Skin Friction Coeff.</div><div class="rv" id="rd-cf">—</div><div class="ru">chord-avg · W-C corrected</div></div>
+        <div class="rc"><div class="rl">Reynolds ×10⁶</div><div class="rv" id="rd-re">—</div></div>
+        <div class="rc"><div class="rl">Flow Regime</div><div class="rv" id="rd-regime">—</div></div>
+      </div>
+    </div>
+    <div class="cf-chart">
+      <div class="cf-title">Skin Friction Coefficient (Cf) Along Chord</div>
+      <canvas id="cf-canvas" width="236" height="85"></canvas>
+    </div>
+    <div>
+      <div class="stitle">Skin Friction Coefficient (Cf) Heatmap</div>
+      <div class="legend-bar"></div>
+      <div class="legend-lbl"><span>Low Cf</span><span>Medium</span><span>High Cf</span></div>
+      <div class="info" style="margin-top:8px;">
+        <b>Cf (skin friction coefficient)</b> = τ<sub>wall</sub> / (½ρU²) — the dimensionless ratio of wall shear stress to freestream dynamic pressure. It measures how hard the airflow is dragging on the surface.<br><br>
+        Cf is <b>highest near the leading edge</b> where the boundary layer is thinnest (steep velocity gradient → high wall shear). It decreases chord-wise as the boundary layer thickens. <b>Above M ≈ 0.72 (critical Mach)</b> the accelerated upper-surface flow goes locally supersonic, forming a shock that moves <em>forward</em> with increasing Mach — from ~65% chord at M 0.72 to ~30% chord near M 1.0. The shock produces a sharp Cf spike. The <b>rear recirculation bubble</b> (adverse pressure gradient zone) is coupled to the shock: the post-shock thickened boundary layer carries less momentum into the APG, so the bubble shifts <em>aft</em> and grows broader as the shock moves forward.
+      </div>
+    </div>
+    <div>
+      <div class="stitle">Camera</div>
+      <div class="info">Rotate: left-drag · Zoom: scroll · Pan: right-drag</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ═══════════════════════════════════════
+//  CONSTANTS & STATE
+// ═══════════════════════════════════════
+const NU = 1.5e-5, A_SOUND = 340, CHORD = 1.0;
+const PLATE_X = 5.6, PLATE_Z = 2.0;
+const NCOLS = 120, NROWS = 50;
+
+// Visual camber exaggeration — NACA 2412 is 2% camber which is invisible at scene scale.
+// We exaggerate 5x so the curve reads clearly in 3D.
+const CAMBER_SCALE = PLATE_X * 1.9;
+
+let mode = 'combo';
+let params = { mach:0.72, sp:15, piezo:0.7 };
+
+// ═══════════════════════════════════════
+//  AIRFOIL PROFILES — three geometries
+//
+//  smooth  → NACA 2412: rounded LE, 12% thick, 2% camber (subsonic)
+//  riblets → NACA 0008: symmetric, 8% thick, no camber (transonic-capable)
+//  combo   → Biconvex 4%: sharp LE, flat-sided, minimal camber (supersonic)
+// ═══════════════════════════════════════
+
+// ── NACA 2412 ──
+function naca2412Upper(xc) {
+  xc=Math.max(0,Math.min(1,xc));
+  const m=0.02,p=0.4,t=0.12;
+  let yc,dyc;
+  if(xc<p){yc=(m/(p*p))*(2*p*xc-xc*xc);dyc=(m/(p*p))*(2*p-2*xc);}
+  else{yc=(m/((1-p)*(1-p)))*(1-2*p+2*p*xc-xc*xc);dyc=(m/((1-p)*(1-p)))*(2*p-2*xc);}
+  const yt=(t/0.2)*(0.2969*Math.sqrt(xc)-0.1260*xc-0.3516*xc*xc+0.2843*Math.pow(xc,3)-0.1015*Math.pow(xc,4));
+  return yc+yt*Math.cos(Math.atan(dyc));
+}
+function naca2412Lower(xc) {
+  xc=Math.max(0,Math.min(1,xc));
+  const m=0.02,p=0.4,t=0.12;
+  let yc,dyc;
+  if(xc<p){yc=(m/(p*p))*(2*p*xc-xc*xc);dyc=(m/(p*p))*(2*p-2*xc);}
+  else{yc=(m/((1-p)*(1-p)))*(1-2*p+2*p*xc-xc*xc);dyc=(m/((1-p)*(1-p)))*(2*p-2*xc);}
+  const yt=(t/0.2)*(0.2969*Math.sqrt(xc)-0.1260*xc-0.3516*xc*xc+0.2843*Math.pow(xc,3)-0.1015*Math.pow(xc,4));
+  return yc-yt*Math.cos(Math.atan(dyc));
+}
+
+// ── NACA 0008 (symmetric, thinner) ──
+function naca0008Upper(xc) {
+  xc=Math.max(0,Math.min(1,xc));
+  const t=0.08;
+  return (t/0.2)*(0.2969*Math.sqrt(xc)-0.1260*xc-0.3516*xc*xc+0.2843*Math.pow(xc,3)-0.1015*Math.pow(xc,4));
+}
+function naca0008Lower(xc){ return -naca0008Upper(xc); }
+
+// ── Biconvex supersonic — sharp LE, 4% thick, slight camber toward TE only ──
+// Upper: parabolic arc  y = 4*t*xc*(1-xc)  with t=0.04, plus tiny aft camber
+// This gives a pointed leading edge (y=0 at xc=0) and sharp trailing edge.
+function biconvexUpper(xc) {
+  xc=Math.max(0,Math.min(1,xc));
+  const t=0.04;
+  const thickness=4*t*xc*(1-xc);           // parabolic, zero at both ends
+  const camber=0.008*xc*xc;                 // tiny aft camber for lift
+  return thickness+camber;
+}
+function biconvexLower(xc) {
+  xc=Math.max(0,Math.min(1,xc));
+  const t=0.04;
+  const thickness=4*t*xc*(1-xc);
+  const camber=0.008*xc*xc;
+  return -thickness+camber*0.3;             // flatter underside
+}
+
+// ── Active profile selector ──
+function profileUpper(xc) {
+  if(mode==='smooth')  return naca2412Upper(xc);
+  if(mode==='riblets') return naca0008Upper(xc);
+  return biconvexUpper(xc);
+}
+function profileLower(xc) {
+  if(mode==='smooth')  return naca2412Lower(xc);
+  if(mode==='riblets') return naca0008Lower(xc);
+  return biconvexLower(xc);
+}
+
+// Scene-space Y for upper surface at chord fraction xFrac
+function wingY(xFrac) {
+  return profileUpper(Math.max(0,Math.min(1,xFrac))) * CAMBER_SCALE;
+}
+
+// ═══════════════════════════════════════
+//  Cf PROFILE — transonic-aware, shock-coupled APG
+//
+//  Physics modelled:
+//  1. Upper-surface flow accelerates beyond local sonic even at freestream
+//     M < 1.0 (transonic). The NACA 2412 critical Mach is ~0.68; above that
+//     a supersonic pocket forms on the upper surface, terminated by a shock.
+//  2. Shock position: moves forward as Mach increases.
+//     At M_crit (~0.72) the shock sits near 60–65% chord.
+//     By M = 0.95 it has migrated to ~35% chord.
+//     Above M = 1.0 it sits near 30–40% chord (normal shock, fully developed).
+//  3. The shock thickens the boundary layer abruptly → Cf spike.
+//     Spike strength grows with freestream Mach.
+//  4. APG / recirculation bubble: sits downstream of the shock.
+//     When the shock is absent (M < 0.72) the bubble peaks around 55–80% chord.
+//     Once the shock appears it energises / displaces the separation — the bubble
+//     moves aft and grows broader as the shock pushes further forward, because the
+//     thickened post-shock BL reaches the APG zone with less momentum.
+// ═══════════════════════════════════════
+
+// Returns the chord-fraction at which the shock sits for this freestream Mach.
+// Below M_crit no shock exists (returns null).
+function shockPosition(mach) {
+  const M_CRIT = 0.72;   // approx critical Mach for NACA 2412 upper surface
+  if (mach < M_CRIT) return null;
+  // At M_crit shock sits at 0.65; migrates forward to 0.30 as M → 1.5
+  // Use a smooth mapping:  xShock = 0.65 - 0.35 * t,  t in [0,1]
+  const t = Math.min(1.0, (mach - M_CRIT) / (1.5 - M_CRIT));
+  return 0.65 - 0.35 * t;
+}
+
+function buildCfProfile(mach, surfaceMode, spVal, piezoGain) {
+  const U  = mach * A_SOUND;
+  const N  = 200;
+  const cf = new Float32Array(N);
+
+  // ── Derived shock properties ──
+  const xShock = shockPosition(mach);      // null if fully subsonic
+  const hasShock = xShock !== null;
+
+  // Shock strength grows with how far Mach is above critical.
+  // We cap it so the spike doesn't dwarf everything else.
+  const shockStrength = hasShock
+    ? Math.min(3.0, (mach - 0.72) * 2.8)
+    : 0;
+
+  // ── APG bubble parameters — shift aft when shock is upstream of them ──
+  // Baseline (no shock): bubble centred around 55–80% chord.
+  // With shock: shock-thickened BL delays reattachment → bubble moves aft,
+  // becomes broader, and its peak grows.
+  let apgStart, apgEnd, apgPeakBase;
+  if (!hasShock) {
+    apgStart = 0.52; apgEnd = 0.82;
+    apgPeakBase = { smooth: 2.4, riblets: 1.5, combo: 0.9 };
+  } else {
+    // Aft shift proportional to how far forward the shock has moved.
+    // When xShock is near 0.65 the bubble barely shifts; when xShock is
+    // at 0.30 (strong shock, high Mach) the bubble is pushed well aft.
+    const shockShift = (0.65 - xShock) * 0.5;  // max ~0.175 shift
+    apgStart = Math.min(0.72, 0.54 + shockShift);
+    apgEnd   = Math.min(0.96, 0.84 + shockShift);
+    // Shock-thickened BL makes separation worse → higher APG peaks
+    const shockBoost = 1.0 + shockStrength * 0.25;
+    apgPeakBase = {
+      smooth:  2.4  * shockBoost,
+      riblets: 1.5  * shockBoost,
+      combo:   0.9  * shockBoost
+    };
+  }
+
+  for (let i=0; i<N; i++) {
+    const xc  = (i+0.5)/N;
+    const xDim = xc * CHORD;
+
+    // ── Base turbulent Cf via Prandtl 1/7th power law ──
+    const Re_x = Math.max(500, U * xDim / NU);
+    let Cf = 0.0592 * Math.pow(Re_x, -0.2);
+
+    // ── Adverse pressure gradient / recirculation bubble ──
+    // Smoothly confined between apgStart and apgEnd.
+    if (xc > apgStart && xc < apgEnd) {
+      const phase = (xc - apgStart) / (apgEnd - apgStart);
+      let apgPeak = apgPeakBase[surfaceMode] ?? apgPeakBase.combo;
+      if (surfaceMode === 'combo') apgPeak = apgPeakBase.combo + (1-piezoGain)*0.5;
+      Cf *= (1 + apgPeak * Math.pow(Math.sin(Math.PI * phase), 1.4));
+    }
+
+    // ── Riblet drag reduction (attached region only) ──
+    if (surfaceMode !== 'smooth') {
+      const spOpt = 15;
+      const spDev = Math.abs(spVal - spOpt) / spOpt;
+      const maxRed = 0.085 * Math.max(0, 1 - spDev*spDev*4.5);
+      const inAPG = (xc > apgStart && xc < apgEnd);
+      Cf *= (1 - maxRed * (inAPG ? 0.4 : 1.0));
+    }
+
+    // ── Piezo damping ──
+    if (surfaceMode === 'combo') {
+      const inAPG = (xc > apgStart && xc < apgEnd);
+      Cf *= (1 - piezoGain * 0.28 * (inAPG ? 0.6 : 1.0));
+    }
+
+    // ── Shock wave Cf spike ──
+    // Appears from M_crit onward, grows stronger and moves forward with Mach.
+    // The shock is a thin feature — half-width ~4% chord — that ADDS to Cf
+    // (never a dip). Directly after the shock there is a brief Cf dip as the
+    // thickened BL relaxes before the APG zone.
+    if (hasShock) {
+      const hw = 0.04;   // half-width of the spike in chord fractions
+      const dist = Math.abs(xc - xShock);
+      if (dist < hw * 2.5) {
+        const shockPhase = dist / (hw * 2.5);
+        const bell = Math.pow(Math.cos(shockPhase * Math.PI * 0.5), 2);
+        Cf *= (1 + shockStrength * bell);
+      }
+      // Brief post-shock BL relaxation trough (slight Cf drop just after shock)
+      if (xc > xShock + hw && xc < xShock + hw * 6) {
+        const troughPhase = (xc - (xShock + hw)) / (hw * 5);
+        Cf *= (1 - 0.18 * Math.sin(Math.PI * troughPhase) * Math.min(1, shockStrength * 0.5));
+      }
+    }
+
+    cf[i] = Math.max(0, Cf);
+  }
+  return cf;
+}
+
+// ═══════════════════════════════════════
+//  RENDERER / CAMERA
+// ═══════════════════════════════════════
+const container = document.getElementById('cc');
+const W = () => container.clientWidth;
+const H = () => container.clientHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(W(),H());
+renderer.setClearColor(0x080d1a);
+container.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42,W()/H(),0.01,100);
+
+let sph={theta:-0.28,phi:1.0,r:8.0};
+let pan=new THREE.Vector3(0,0.5,0);
+let drag=false,rDrag=false,prev={x:0,y:0};
+
+function applyCam(){
+  const x=sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  const y=sph.r*Math.cos(sph.phi);
+  const z=sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  camera.position.set(x+pan.x,y+pan.y,z+pan.z);
+  camera.lookAt(pan);
+}
+applyCam();
+
+renderer.domElement.addEventListener('mousedown',e=>{drag=true;rDrag=e.button===2;prev={x:e.clientX,y:e.clientY};});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('mouseup',()=>drag=false);
+window.addEventListener('mousemove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-prev.x,dy=e.clientY-prev.y;
+  if(rDrag){
+    const fwd=new THREE.Vector3().subVectors(pan,camera.position).normalize();
+    const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+    pan.addScaledVector(right,-dx*0.006);
+    pan.addScaledVector(new THREE.Vector3(0,1,0),dy*0.006);
+  }else{
+    sph.theta-=dx*0.008;
+    sph.phi=Math.max(0.05,Math.min(Math.PI-0.05,sph.phi+dy*0.008));
+  }
+  prev={x:e.clientX,y:e.clientY};applyCam();
+});
+renderer.domElement.addEventListener('wheel',e=>{sph.r=Math.max(2,Math.min(22,sph.r+e.deltaY*0.008));applyCam();});
+
+// ═══════════════════════════════════════
+//  LIGHTING
+// ═══════════════════════════════════════
+scene.add(new THREE.AmbientLight(0x0d1e3a,1.4));
+const dL=new THREE.DirectionalLight(0x7ab8d8,1.2);dL.position.set(2,6,3);scene.add(dL);
+const fL=new THREE.DirectionalLight(0x1e3a5f,0.5);fL.position.set(-3,1,-3);scene.add(fL);
+const uL=new THREE.DirectionalLight(0x0a1830,0.5);uL.position.set(0,-4,0);scene.add(uL);
+
+// ═══════════════════════════════════════
+//  WIND TUNNEL CHAMBER
+// ═══════════════════════════════════════
+(function(){
+  scene.add(new THREE.Mesh(
+    new THREE.BoxGeometry(7.2,2.6,2.9),
+    new THREE.MeshBasicMaterial({color:0x1e3a5f,wireframe:true,transparent:true,opacity:0.08})
+  ));
+  const am=new THREE.MeshBasicMaterial({color:0x4a8fc4,transparent:true,opacity:0.38});
+  for(let z=-1;z<=1;z+=0.5){
+    const ag=new THREE.ConeGeometry(0.04,0.17,6);ag.rotateZ(-Math.PI/2);
+    const a=new THREE.Mesh(ag,am);a.position.set(-3.8,0.4,z);scene.add(a);
+  }
+})();
+
+// ═══════════════════════════════════════
+//  Cf → colour
+// ═══════════════════════════════════════
+function cfColor(t){
+  const s=[[0.10,0.23,0.43],[0.16,0.47,0.65],[0.22,0.65,0.48],[0.77,0.59,0.22],[0.69,0.18,0.18]];
+  t=Math.max(0,Math.min(1,t));
+  const seg=Math.min(3,Math.floor(t*4)),f=t*4-seg,a=s[seg],b=s[seg+1];
+  return new THREE.Color(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f);
+}
+
+// ═══════════════════════════════════════
+//  WING SURFACE (upper surface riblet mesh)
+// ═══════════════════════════════════════
+let wingMesh=null;
+
+function buildWing(){
+  if(wingMesh){scene.remove(wingMesh);wingMesh.geometry.dispose();wingMesh.material.dispose();}
+
+  const cfProf = buildCfProfile(params.mach,mode,params.sp,params.piezo);
+  // Compute actual min/max then ensure a minimum spread so normalisation is stable.
+  // We clamp the min to no lower than 50% of the mean to avoid extreme outliers
+  // pulling everything to one end of the ramp.
+  let cfMin=Infinity, cfMax=-Infinity, cfSum=0;
+  for(const v of cfProf){ if(v<cfMin)cfMin=v; if(v>cfMax)cfMax=v; cfSum+=v; }
+  const cfMean = cfSum/cfProf.length;
+  cfMin = Math.max(cfMin, cfMean*0.5);   // prevent near-zero outliers collapsing the range
+  if(cfMax-cfMin < cfMean*0.3) cfMax = cfMin + cfMean*0.3; // guarantee visible spread
+
+  const isSmooth = mode==='smooth';
+  const ribH  = isSmooth ? 0 : 0.04*(15/Math.max(5,params.sp));
+  const ribPer = isSmooth ? 1 : Math.max(0.03,params.sp/95);
+
+  const positions=[],normals=[],colors=[],indices=[];
+
+  for(let row=0;row<=NROWS;row++){
+    const zFrac=row/NROWS;
+    const zPos=-PLATE_Z/2+zFrac*PLATE_Z;
+    // V-groove varies in Z (grooves run chord-wise = correct for a wing)
+    const phase=((zPos/ribPer)%1+1)%1;
+    const vShape=Math.pow(Math.abs(phase-0.5)*2,2.5); // sharp ridge tips
+
+    for(let col=0;col<=NCOLS;col++){
+      const xFrac=col/NCOLS;
+      const xPos=-PLATE_X/2+xFrac*PLATE_X;
+      const yWing=wingY(xFrac);
+      const yPos=yWing+(isSmooth?0:vShape*ribH);
+
+      positions.push(xPos,yPos,zPos);
+      normals.push(0,1,0); // recomputed below
+
+      // Local Cf colour
+      const ci=Math.min(cfProf.length-1,Math.floor(xFrac*cfProf.length));
+      let cv=cfProf[ci];
+      if(!isSmooth) cv*=(0.70+0.30*vShape); // ridges hotter, valleys cooler
+      const t=(cv-cfMin)/Math.max(1e-9,cfMax-cfMin);
+      const c=cfColor(t);
+      colors.push(c.r,c.g,c.b);
+    }
+  }
+
+  for(let r=0;r<NROWS;r++) for(let c2=0;c2<NCOLS;c2++){
+    const a=r*(NCOLS+1)+c2,b=a+1,c=a+(NCOLS+1),d=c+1;
+    indices.push(a,c,b,b,c,d);
+  }
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute('normal',  new THREE.Float32BufferAttribute(normals,3));
+  geo.setAttribute('color',   new THREE.Float32BufferAttribute(colors,3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  wingMesh=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({vertexColors:true,shininess:55,side:THREE.DoubleSide}));
+  scene.add(wingMesh);
+
+  buildAirfoilBody();
+}
+
+// ── Solid airfoil body — built as a BufferGeometry quad strip (no Shape/Extrude)
+//    to avoid the ExtrudeGeometry crash on degenerate trailing-edge points.
+let bodyMesh=null;
+function buildAirfoilBody(){
+  if(bodyMesh){scene.remove(bodyMesh);bodyMesh.geometry.dispose();bodyMesh.material.dispose();bodyMesh=null;}
+  const N=80;
+  const positions=[], indices=[];
+
+  // Two Z slabs: front (z = -PLATE_Z/2) and back (z = +PLATE_Z/2)
+  // Each slab: upper surface points 0..N, then lower surface points N+1..2N+1
+  for(let slab=0;slab<2;slab++){
+    const zPos = slab===0 ? -PLATE_Z/2 : PLATE_Z/2;
+    for(let i=0;i<=N;i++){
+      const xc=i/N;
+      const xPos=-PLATE_X/2+xc*PLATE_X;
+      positions.push(xPos, profileUpper(xc)*CAMBER_SCALE, zPos);
+    }
+    for(let i=0;i<=N;i++){
+      const xc=i/N;
+      const xPos=-PLATE_X/2+xc*PLATE_X;
+      positions.push(xPos, profileLower(xc)*CAMBER_SCALE, zPos);
+    }
+  }
+  // Each slab has (N+1)*2 = 2*(N+1) verts
+  const slabSize=(N+1)*2;
+
+  // Side faces (span-wise quads connecting slab0 to slab1)
+  // Upper strip: slab0 upper [0..N] → slab1 upper [slabSize..slabSize+N]
+  for(let i=0;i<N;i++){
+    const a=i, b=i+1, c=slabSize+i, d=slabSize+i+1;
+    indices.push(a,c,b, b,c,d);
+  }
+  // Lower strip: slab0 lower [N+1..2N+1] → slab1 lower [slabSize+N+1..slabSize+2N+1]
+  for(let i=0;i<N;i++){
+    const a=(N+1)+i, b=(N+1)+i+1, c=slabSize+(N+1)+i, d=slabSize+(N+1)+i+1;
+    indices.push(a,b,c, b,d,c);
+  }
+  // Front cap (slab0): upper[i] → lower[i] quad strip
+  for(let i=0;i<N;i++){
+    const u0=i, u1=i+1, l0=(N+1)+i, l1=(N+1)+i+1;
+    indices.push(u0,l0,u1, u1,l0,l1);
+  }
+  // Back cap (slab1)
+  for(let i=0;i<N;i++){
+    const u0=slabSize+i, u1=slabSize+i+1, l0=slabSize+(N+1)+i, l1=slabSize+(N+1)+i+1;
+    indices.push(u0,u1,l0, u1,l1,l0);
+  }
+
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  bodyMesh=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:0x0a1428,shininess:15,side:THREE.DoubleSide}));
+  bodyMesh.position.y = -0.04; // sit strictly below wing surface to prevent z-fighting
+  scene.add(bodyMesh);
+}
+
+// ═══════════════════════════════════════
+//  STREAMLINES
+// ═══════════════════════════════════════
+const streamGroup=new THREE.Group();
+scene.add(streamGroup);
+let streamData=[];
+const NSTREAMS=28;
+
+function buildStreamlines(){
+  while(streamGroup.children.length) streamGroup.remove(streamGroup.children[0]);
+  streamData=[];
+
+  let sepMag,sepStart,sepEnd;
+  // Compute shock position to mirror the Cf profile APG shift
+  const xSh = shockPosition(params.mach);
+  const shockShift = xSh !== null ? (0.65 - xSh) * 0.5 : 0;
+
+  if(mode==='smooth'){
+    sepMag=0.42;
+    sepStart=0.54+shockShift;sepEnd=Math.min(0.95,0.88+shockShift);
+  } else if(mode==='riblets'){
+    sepMag=0.22;
+    sepStart=0.56+shockShift;sepEnd=Math.min(0.94,0.82+shockShift);
+  } else {
+    sepMag=0.10*(1-params.piezo*0.65);
+    sepStart=0.60+shockShift;sepEnd=Math.min(0.92,0.80+shockShift);
+  }
+
+  for(let si=0;si<NSTREAMS;si++){
+    const zFrac=si/(NSTREAMS-1);
+    const zPos=-PLATE_Z*0.55+zFrac*PLATE_Z*1.1;
+    const tier=si%5,isWall=tier<2;
+    const yOff=isWall?0.016+tier*0.032:0.08+(tier-2)*0.18;
+
+    const Npts=90,pts=[];
+    for(let j=0;j<Npts;j++){
+      const xFrac=j/(Npts-1);
+      const xPos=-PLATE_X/2+xFrac*PLATE_X;
+      const yBase=wingY(xFrac); // follow camber
+
+      let yPos=yBase+yOff;
+
+      // BL displacement thickness (Blasius-like growth)
+      const U=params.mach*A_SOUND;
+      const Rex=Math.max(500,U*xFrac*CHORD/NU);
+      const blGrowth=0.37*Math.pow(Rex,-0.2)*PLATE_X*0.10;
+      if(isWall) yPos+=blGrowth*0.45;
+
+      // Separation — flow detaches and disperses upward, does NOT arch back down.
+      // Past sepStart the stream lifts off the surface and continues drifting away
+      // into the wake. We use a smooth ramp-up that holds its offset after sepEnd.
+      if(xFrac > sepStart){
+        const ramp = Math.min(1, (xFrac - sepStart) / (sepEnd - sepStart));
+        // smoothstep so lift-off isn't instantaneous
+        const smooth = ramp*ramp*(3-2*ramp);
+        const wallProx = Math.max(0, 1 - yOff/0.55);
+        yPos += sepMag * smooth * wallProx;
+      }
+
+      // Shock compression: streams dip slightly at shock location (density increase).
+      // Appears from M_crit (~0.72) onward; position moves forward with Mach.
+      const xSh = shockPosition(params.mach);
+      if(xSh !== null){
+        const hw = 0.06;
+        if(xFrac > xSh - hw && xFrac < xSh + hw){
+          const sp = (xFrac - (xSh - hw)) / (hw * 2);
+          const str = Math.min(1.0, (params.mach - 0.72) * 3.0);
+          yPos -= 0.035 * str * Math.sin(Math.PI * sp) * Math.max(0, 1 - yOff/0.4);
+        }
+      }
+
+      pts.push(new THREE.Vector3(xPos,yPos,zPos));
+    }
+
+    const curve=new THREE.CatmullRomCurve3(pts);
+    const tubeGeo=new THREE.TubeGeometry(curve,72,isWall?0.0042:0.0028,4,false);
+    const col=isWall?new THREE.Color(0x1e4878):new THREE.Color(0x2a6aaa);
+    const tube=new THREE.Mesh(tubeGeo,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:isWall?0.62:0.32}));
+    streamGroup.add(tube);
+
+    const bead=new THREE.Mesh(
+      new THREE.SphereGeometry(0.013,5,5),
+      new THREE.MeshBasicMaterial({color:0xa8c4e0})
+    );
+    streamGroup.add(bead);
+    streamData.push({curve,bead,speed:isWall?0.07+Math.random()*0.05:0.20+Math.random()*0.12,t:Math.random(),isWall,sepStart,sepEnd});
+  }
+}
+
+// (shock wave display removed)
+
+// ═══════════════════════════════════════
+//  READOUTS
+// ═══════════════════════════════════════
+function computeMeanCf(){
+  // Integrate Cf profile over chord and divide by N for mean
+  // This uses the same buildCfProfile that drives the heatmap,
+  // so the readout is consistent with what's shown on the surface.
+  const prof = buildCfProfile(params.mach, mode, params.sp, params.piezo);
+  let sum = 0;
+  for(const v of prof) sum += v;
+  let cf = sum / prof.length;
+
+  // White-Christoph compressibility correction above Mach 0.5:
+  // Cf_comp = Cf_incomp / (1 + 0.144·M²)^0.65
+  // This accounts for density and viscosity changes in compressible BL.
+  if(params.mach > 0.5){
+    cf = cf / Math.pow(1 + 0.144*params.mach*params.mach, 0.65);
+  }
+  return cf;
+}
+
+function computeDragReduction(){
+  if(mode==='smooth') return 0;
+  const spOpt=15,spDev=Math.abs(params.sp-spOpt)/spOpt;
+  let r=8.0*Math.max(0,1-spDev*spDev*4.5);
+  if(params.mach>1.0) r*=(1-Math.min(0.55,(params.mach-1.0)*0.7));
+  return Math.min(15,r+(mode==='combo'?params.piezo*5.5:0));
+}
+
+function updateReadouts(){
+  const U=params.mach*A_SOUND,ReL=Math.max(1e4,U*CHORD/NU);
+  const cf = computeMeanCf();
+  document.getElementById('rd-drag').textContent=computeDragReduction().toFixed(1)+'%';
+  document.getElementById('rd-cf').textContent=cf.toFixed(5);
+  document.getElementById('rd-re').textContent=(ReL/1e6).toFixed(2);
+  const regime=params.mach>1.3?'Supersonic':params.mach>=1.0?'Transonic/Sonic':params.mach>0.72?'Transonic':'Subsonic';
+  document.getElementById('rd-regime').textContent=regime;
+  drawCfChart();
+}
+
+function drawCfChart(){
+  const cv=document.getElementById('cf-canvas'),ctx=cv.getContext('2d');
+  const cw=cv.width,ch=cv.height;
+  ctx.clearRect(0,0,cw,ch);
+  ctx.fillStyle='#0d1628';ctx.fillRect(0,0,cw,ch);
+  ctx.strokeStyle='rgba(74,143,196,0.1)';ctx.lineWidth=1;
+  for(let i=1;i<4;i++){
+    ctx.beginPath();ctx.moveTo(0,ch*i/4);ctx.lineTo(cw,ch*i/4);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cw*i/4,0);ctx.lineTo(cw*i/4,ch);ctx.stroke();
+  }
+  const modes=[{id:'smooth',col:'#c4963a',lbl:'Baseline'},{id:'riblets',col:'#4a8fc4',lbl:'Riblets'},{id:'combo',col:'#5ad0a0',lbl:'Apex-H'}];
+  let gMax=0;
+  modes.forEach(({id})=>{const p=buildCfProfile(params.mach,id,params.sp,params.piezo);for(const v of p)if(v>gMax)gMax=v;});
+  modes.forEach(({id,col,lbl},mi)=>{
+    const isCur=id===mode,prof=buildCfProfile(params.mach,id,params.sp,params.piezo),N2=prof.length;
+    ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=isCur?2:0.8;ctx.globalAlpha=isCur?1:0.25;
+    for(let j=0;j<N2;j++){
+      const px=(j/(N2-1))*cw,py=ch-(prof[j]/gMax)*(ch-8)-4;
+      j===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.stroke();ctx.globalAlpha=1;
+    ctx.fillStyle=col;ctx.globalAlpha=isCur?1:0.3;ctx.fillRect(cw-68,5+mi*12,10,2);
+    ctx.fillStyle='rgba(168,196,224,0.55)';ctx.font='7px DM Sans,sans-serif';ctx.fillText(lbl,cw-55,11+mi*12);ctx.globalAlpha=1;
+  });
+  ctx.fillStyle='rgba(168,196,224,0.35)';ctx.font='8px Space Mono,monospace';
+  ctx.fillText('x/c →',cw-34,ch-2);ctx.fillText('Cf',2,10);ctx.fillText('0',2,ch-3);
+}
+
+// ═══════════════════════════════════════
+//  REBUILD
+// ═══════════════════════════════════════
+function rebuildScene(){buildWing();buildStreamlines();updateReadouts();}
+
+// ═══════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════
+window.setMode=function(m){
+  mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+m).classList.add('active');
+  const ps=document.getElementById('sl-piezo');ps.disabled=m!=='combo';
+  rebuildScene();
+};
+window.updateParam=function(key,val){
+  params[key]=parseFloat(val);
+  document.getElementById('val-'+key).textContent=parseFloat(val).toFixed(key==='sp'?0:2);
+  rebuildScene();
+};
+
+// ═══════════════════════════════════════
+//  ANIMATE
+// ═══════════════════════════════════════
+const clock=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  for(const sd of streamData){
+    sd.t+=sd.speed*(0.4+params.mach*0.65)*dt;
+    if(sd.t>=1)sd.t-=1;
+    const pt=sd.curve.getPointAt(Math.min(0.999,sd.t));
+    sd.bead.position.copy(pt);
+    const xFrac=(pt.x+PLATE_X/2)/PLATE_X;
+    let col;
+    if(xFrac>sd.sepStart&&xFrac<sd.sepEnd)              col=0xc4963a;
+    else if(mode==='combo'&&params.piezo>0.2&&sd.isWall) col=0x50c8e8;
+    else if(sd.isWall)                                    col=0x4a8fc4;
+    else                                                  col=0xa8c4e0;
+    sd.bead.material.color.setHex(col);
+  }
+  renderer.render(scene,camera);
+}
+
+// ═══════════════════════════════════════
+//  RESIZE
+// ═══════════════════════════════════════
+window.addEventListener('resize',()=>{camera.aspect=W()/H();camera.updateProjectionMatrix();renderer.setSize(W(),H());});
+
+// ═══════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════
+setTimeout(()=>{rebuildScene();document.getElementById('loading-screen').style.display='none';animate();},1100);
+</script>
+</body>
+</html>
